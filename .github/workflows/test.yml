@@ -1,16 +1,12 @@
-name: test
+name: Tests
 
-on: workflow_dispatch
-
-env:
-  FOUNDRY_PROFILE: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
 
 jobs:
-  check:
-    strategy:
-      fail-fast: true
-
-    name: Foundry project
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -19,16 +15,6 @@ jobs:
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
-        with:
-          version: nightly
 
-      - name: Run Forge build
-        run: |
-          forge --version
-          forge build --sizes
-        id: build
-
-      - name: Run Forge tests
-        run: |
-          forge test -vvv
-        id: test
+      - name: Run tests
+        run: forge test -vvv
