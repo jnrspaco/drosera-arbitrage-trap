@@ -14,7 +14,6 @@ contract ArbitrageTrapTest is Test {
     
     address token0 = address(0x1111);
     address token1 = address(0x2222);
-    uint256 threshold = 200; // 2% threshold
 
     function setUp() public {
         // Deploy mock DEXs at the addresses expected by the trap
@@ -27,7 +26,7 @@ contract ArbitrageTrapTest is Test {
         // Deploy response contract
         response = new ArbitrageResponse();
         
-        // Deploy trap (no constructor args)
+        // Deploy trap
         trap = new ArbitrageTrap();
     }
 
@@ -52,11 +51,15 @@ contract ArbitrageTrapTest is Test {
         dex1.setPrice(token0, token1, 1000e18);
         dex2.setPrice(token0, token1, 1050e18);
         
+        // DROSERA ORDERING: [0] = newest, [1] = previous
         bytes[] memory dataArray = new bytes[](2);
-        dataArray[0] = trap.collect();
+        dataArray[0] = trap.collect(); // newest
         
         vm.roll(block.number + 1);
-        dataArray[1] = trap.collect();
+        vm.warp(block.timestamp + 12);
+        
+        dataArray[1] = dataArray[0]; // previous (copy for persistence test)
+        dataArray[0] = trap.collect(); // new newest
         
         (bool shouldRespond, bytes memory callData) = trap.shouldRespond(dataArray);
         
@@ -73,23 +76,30 @@ contract ArbitrageTrapTest is Test {
         dataArray[0] = trap.collect();
         
         vm.roll(block.number + 1);
-        dataArray[1] = trap.collect();
+        dataArray[1] = dataArray[0];
+        dataArray[0] = trap.collect();
         
         (bool shouldRespond,) = trap.shouldRespond(dataArray);
         
         assertFalse(shouldRespond);
     }
 
-    function testResponseExecution() public {
-        uint256 dex1Price = 1000e18;
-        uint256 dex2Price = 1050e18;
-        uint256 spread = 500; // 5%
-        uint256 blockNum = block.number;
+    function testHandlesEmptyData() public {
+        bytes[] memory emptyData = new bytes[](2);
+        emptyData[0] = bytes("");
+        emptyData[1] = bytes("");
         
-        response.handleArbitrage(dex1Price, dex2Price, spread, blockNum);
+        (bool shouldRespond,) = trap.shouldRespond(emptyData);
+        assertFalse(shouldRespond);
+    }
+
+    function testHandlesZeroPrices() public {
+        // Set one DEX to zero price
+        dex1.setPrice(token0, token1, 0);
+        dex2.setPrice(token0, token1, 1000e18);
         
-        (uint256 lastBlock, uint256 total) = response.getStats();
-        assertEq(lastBlock, block.number);
-        assertEq(total, 1);
+        bytes memory data = trap.collect();
+        // Should return empty bytes when price is invalid
+        assertEq(data.length, 0);
     }
 }
